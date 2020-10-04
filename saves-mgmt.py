@@ -7,7 +7,7 @@ import sys
 import datetime
 import ntpath
 
-DEBUG = True
+DEBUG = False
 window = None
 
 
@@ -36,14 +36,23 @@ class Save:
         return(f'{self.folder}: {self.time}\n{[file for file in self.filesFullPath]}\n\n')
 
     def __gt__(self, other):
-        if other:
-            return(self.time > other.time)
+        if self.time > other.time:
+            return(True)
+        elif self.time == other.time and self.number > other.number:
+            return(True)
+        else:
+            return(False)
 
     def __lt__(self, other):
-        return(self.time < other.time)
+        if self.time < other.time:
+            return(True)
+        elif self.time == other.time and self.number < other.number:
+            return(True)
+        else:
+            return(False)
 
     def __eq__(self, other):
-        return(self.time == other.time)
+        return(self.time == other.time and self.number == other.number)
 
 
 class Game:
@@ -77,7 +86,8 @@ class Game:
 
     def updateSaves(self):
 
-        for i in range(1, self.numSaves):
+        self.saves = list()
+        for i in range(1, self.numSaves + 1):
             path = os.path.join(self.savesPath, self.getSaveFolderName(i))
             save = Save(path, i, self.originalSaveFiles)
 
@@ -103,12 +113,13 @@ class Game:
         self.originalSaveFiles = list()
 
         self.lblStatus = tk.Label(window, text="Initialising...")
-        self.lblStatus.grid(column=0, row=12, columnspan=5)
+        self.lblStatus.grid(column=0, row=15, columnspan=5)
+        self.lblStatus['anchor'] = "w"
         self.txtSaveNum = tk.Entry(window, width=2)
-        self.txtSaveNum.grid(column=1, row=3)
+        self.txtSaveNum.grid(column=1, row=5)
 
         # create labels for savegames
-        lblSaveTitle = tk.Label(window, text="List of saves, sorted from newest to oldest").grid(column=3, row=1, columnspan=2)
+        lblSaveTitle = tk.Label(window, text="List of saves, sorted from newest to oldest:").grid(column=3, row=1, columnspan=2)
         for i in range(self.numSaves):
             lblSave = tk.Label(window, text="")
             lblSave.grid(column=4, row=i+2)
@@ -122,7 +133,7 @@ class Game:
         dprint(f'self.originalSaveFiles.len(): {len(self.originalSaveFiles)}')
 
         if self.useSaveFolders:
-            for i in range(1, self.numSaves):
+            for i in range(1, self.numSaves + 1):
                 path = os.path.join(self.savesPath, self.getSaveFolderName(i))
                 dprint(path)
                 # check if save folders are created, create if not
@@ -142,13 +153,17 @@ class Game:
 
         copied = False
 
-        if self.lastSave == None or self.lastSave == 5:
+        if self.lastSave == None or self.lastSave == self.numSaves:
             self.lastSave = 0
 
-        dprint(f'copy files:\n{self.saves[self.lastSave].filesFullPath}\nto\n{self.saves[self.lastSave].folder}')
-        for file in self.saves[self.lastSave].filesFullPath:
+        for save in self.saves:
+            if save.number == self.lastSave + 1:
+                break
+        dprint(f'copy files:\n{save.filesFullPath}\nto\n{save.folder}')
+
+        for file in save.filesFullPath:
             try:
-                copy2(file, self.saves[self.lastSave].folder)
+                copy2(file, save.folder)
             except:
                 error = f'ERROR copying files: {sys.exc_info()[0]}:\n{sys.exc_info()[1]}'
                 self.lblStatus['text'] = error
@@ -163,9 +178,13 @@ class Game:
 
     def load(self, number):
         dprint(f'copy files {[os.path.join(self.saves[self.lastSave-1].folder, file) for file in os.listdir(self.saves[self.lastSave-1].folder)]} to {self.savesPath}')
-        for file in os.listdir(self.saves[self.lastSave-1].folder):
+        for save in self.saves:
+            if save.number == self.lastSave:
+                break
+
+        for file in os.listdir(save.folder):
             try:
-                copy2(os.path.join(self.saves[self.lastSave-1].folder, file), self.savesPath)
+                copy2(os.path.join(save.folder, file), self.savesPath)
             except:
                 error = f'ERROR loading lates files: {sys.exc_info()[0]}:\n{sys.exc_info()[1]}'
                 self.lblStatus['text'] = error
@@ -202,9 +221,9 @@ def clickedLoad(game):
     loaded = False
     if game.txtSaveNum.get().isnumeric():
         saveNum = int(game.txtSaveNum.get())
-        if saveNum < game.numSaves - 1 and game.numSaves > 0:
+        if saveNum <= game.numSaves and game.numSaves > 0:
             dprint(saveNum)
-            # game.load(saveNum)
+            game.load(saveNum)
             loaded = True
 
     if not loaded:
@@ -219,7 +238,7 @@ def main():
 
     window = tk.Tk()
     window.title("Casitos savegame manager")
-    window.geometry('400x300')
+    window.geometry('400x320')
 
     # load game save settings
     game = setup_BadNorth()
@@ -228,13 +247,13 @@ def main():
     lblGame.grid(column=0, row=0)
 
     btnSave = tk.Button(window, text="save", command=partial(clickedSave, game))
-    btnSave.grid(column=0, row=1)
+    btnSave.grid(column=0, row=3)
 
     btnLoadLatest = tk.Button(window, text="load latest", command=partial(clickedLoadLatest, game))
-    btnLoadLatest.grid(column=0, row=2)
+    btnLoadLatest.grid(column=0, row=4)
 
     btnLoadLatest = tk.Button(window, text="load save number: ", command=partial(clickedLoad, game))
-    btnLoadLatest.grid(column=0, row=3)
+    btnLoadLatest.grid(column=0, row=5)
 
     window.mainloop()
 
