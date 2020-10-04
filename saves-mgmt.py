@@ -4,6 +4,8 @@ import os
 from shutil import copy2
 from functools import partial
 import sys
+import datetime
+import ntpath
 
 DEBUG = True
 window = None
@@ -33,24 +35,67 @@ class Save:
     def __str__(self):
         return(f'{self.folder}: {self.time}\n{[file for file in self.filesFullPath]}\n\n')
 
+    def __gt__(self, other):
+        if other:
+            return(self.time > other.time)
+
+    def __lt__(self, other):
+        return(self.time < other.time)
+
+    def __eq__(self, other):
+        return(self.time == other.time)
+
 
 class Game:
 
     name = ""
     savesPath = ""
-    saves = []
-    numSaves = 5
+    saves = list()
+    numSaves = 10
     originalSaveFiles = list()
     lastSave = None
     lastSaveTime = 0
     useSaveFolders = True
     lblStatus = None
+    lblSaves = list()
+    txtSaveNum = None
 
     global DEBUG
     global window
 
+    def displaySaves(self):
+        if self.saves:
+            self.saves.sort(reverse=True)
+            i = 0
+            for lblSave in self.lblSaves:
+                if i < len(self.saves):
+                    lblSave['text'] = f'{self.saves[i].number} - {datetime.datetime.fromtimestamp(self.saves[i].time)}'
+                i += 1
+
     def getSaveFolderName(self, i):
         return f'save-mgmt-{self.name.replace(" ", "_")}-{i}'
+
+    def updateSaves(self):
+
+        for i in range(1, self.numSaves):
+            path = os.path.join(self.savesPath, self.getSaveFolderName(i))
+            save = Save(path, i, self.originalSaveFiles)
+
+            try:
+                saveTime = os.path.getmtime(os.path.join(path, ntpath.basename(self.originalSaveFiles[0])))
+            except:
+                error = f'ERROR getting save date: {sys.exc_info()[0]}:\n{sys.exc_info()[1]}'
+                self.lblStatus['text'] = error
+                dprint(error)
+                saveTime = 0
+
+            save.time = saveTime
+            self.saves.append(save)
+            if saveTime >= self.lastSaveTime:
+                self.lastSaveTime = saveTime
+                self.lastSave = i
+
+        self.displaySaves()
 
     def __init__(self, name, savesPath, originalSaveFiles):
         self.name = name
@@ -58,9 +103,16 @@ class Game:
         self.originalSaveFiles = list()
 
         self.lblStatus = tk.Label(window, text="Initialising...")
-        self.lblStatus.grid(column=0, row=2)
+        self.lblStatus.grid(column=0, row=12, columnspan=5)
+        self.txtSaveNum = tk.Entry(window, width=2)
+        self.txtSaveNum.grid(column=1, row=3)
 
-        self.saves = [None] * self.numSaves
+        # create labels for savegames
+        lblSaveTitle = tk.Label(window, text="List of saves, sorted from newest to oldest").grid(column=3, row=1, columnspan=2)
+        for i in range(self.numSaves):
+            lblSave = tk.Label(window, text="")
+            lblSave.grid(column=4, row=i+2)
+            self.lblSaves.append(lblSave)
 
         # create original save files list
         i = 0
@@ -69,32 +121,17 @@ class Game:
             i += 1
         dprint(f'self.originalSaveFiles.len(): {len(self.originalSaveFiles)}')
 
-        # check if save folders are created, create if not
         if self.useSaveFolders:
-            for i in range(1, 6):
+            for i in range(1, self.numSaves):
                 path = os.path.join(self.savesPath, self.getSaveFolderName(i))
                 dprint(path)
+                # check if save folders are created, create if not
                 if not os.path.exists(path):
                     # create dir
                     os.makedirs(path)
-                else:
-                    dprint(i)
-                    save = Save(path, i, self.originalSaveFiles)
-                    self.saves[i-1] = save
-                    # determine save date
-                    try:
-                        saveTime = os.path.getmtime(self.originalSaveFiles[0])
-                    except:
-                        error = f'ERROR getting save date: {sys.exc_info()[0]}:\n{sys.exc_info()[1]}'
-                        self.lblStatus['text'] = error
-                        dprint(error)
-                    else:
-                        self.saves[i-1].time = saveTime
-                        if saveTime >= self.lastSaveTime:
-                            self.lastSaveTime = saveTime
-                            self.lastSave = i
 
         dprint([str(save) for save in self.saves])
+        self.updateSaves()
 
         self.lblStatus['text'] = f'{self.name} initialised. Last save: {self.lastSave}'
 
@@ -121,28 +158,29 @@ class Game:
 
         if copied:
             self.lastSave += 1
+            self.updateSaves()
             self.lblStatus['text'] = f'Saved game {self.lastSave}'
+
+    def load(self, number):
+        dprint(f'copy files {[os.path.join(self.saves[self.lastSave-1].folder, file) for file in os.listdir(self.saves[self.lastSave-1].folder)]} to {self.savesPath}')
+        for file in os.listdir(self.saves[self.lastSave-1].folder):
+            try:
+                copy2(os.path.join(self.saves[self.lastSave-1].folder, file), self.savesPath)
+            except:
+                error = f'ERROR loading lates files: {sys.exc_info()[0]}:\n{sys.exc_info()[1]}'
+                self.lblStatus['text'] = error
+                dprint(error)
+            else:
+                self.lblStatus['text'] = f'Loaded savegame {self.lastSave}'
 
     def loadLatest(self):
         if self.lastSave:
-            dprint(f'copy files {[os.path.join(self.saves[self.lastSave-1].folder, file) for file in os.listdir(self.saves[self.lastSave-1].folder)]} to {self.savesPath}')
-            for file in os.listdir(self.saves[self.lastSave-1].folder):
-                try:
-                    copy2(os.path.join(self.saves[self.lastSave-1].folder, file), self.savesPath)
-                except:
-                    error = f'ERROR loading lates files: {sys.exc_info()[0]}:\n{sys.exc_info()[1]}'
-                    self.lblStatus['text'] = error
-                    dprint(error)
-                else:
-                    self.lblStatus['text'] = f'Loaded savegame {self.lastSave}'
+            self.load(self.lastSave)
 
         else:
             error = f'ERROR - no latest save game found'
             self.lblStatus['text'] = error
             dprint(error)
-
-    def load(self, number):
-        pass
 
 
 def setup_BadNorth():
@@ -159,13 +197,29 @@ def clickedLoadLatest(game):
     game.loadLatest()
 
 
+def clickedLoad(game):
+    dprint(game.txtSaveNum)
+    loaded = False
+    if game.txtSaveNum.get().isnumeric():
+        saveNum = int(game.txtSaveNum.get())
+        if saveNum < game.numSaves - 1 and game.numSaves > 0:
+            dprint(saveNum)
+            # game.load(saveNum)
+            loaded = True
+
+    if not loaded:
+        error = f'ERROR - provided save number is not correct, must be between 1 and {game.numSaves}'
+        game.lblStatus['text'] = error
+        dprint(error)
+
+
 def main():
 
     global window
 
     window = tk.Tk()
     window.title("Casitos savegame manager")
-    window.geometry('350x200')
+    window.geometry('400x300')
 
     # load game save settings
     game = setup_BadNorth()
@@ -173,11 +227,14 @@ def main():
     lblGame = tk.Label(window, text=f'Game: {game}')
     lblGame.grid(column=0, row=0)
 
-    btn = tk.Button(window, text="save", command=partial(clickedSave, game))
-    btn.grid(column=0, row=1)
+    btnSave = tk.Button(window, text="save", command=partial(clickedSave, game))
+    btnSave.grid(column=0, row=1)
 
-    btn = tk.Button(window, text="load latest", command=partial(clickedLoadLatest, game))
-    btn.grid(column=1, row=1)
+    btnLoadLatest = tk.Button(window, text="load latest", command=partial(clickedLoadLatest, game))
+    btnLoadLatest.grid(column=0, row=2)
+
+    btnLoadLatest = tk.Button(window, text="load save number: ", command=partial(clickedLoad, game))
+    btnLoadLatest.grid(column=0, row=3)
 
     window.mainloop()
 
