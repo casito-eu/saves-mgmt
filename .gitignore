@@ -1,1 +1,7 @@
 /test.py
+__pycache__
+.vscode/
+*.pyc
+!.git_placeholder
+tmp/
+*.tmp
